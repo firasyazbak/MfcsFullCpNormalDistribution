@@ -1,0 +1,746 @@
+def weighted_quantile(v, w_normalized, q):
+    """
+    (Could be similar to get_weighted_quantile)
+    Compute the weighted quantile of a set of values.
+
+    This function calculates the weighted quantile of a given set of values, where each value is associated
+    with a corresponding weight. The weights should be normalized (i.e., they should sum to 1). The function 
+    can handle the calculation of any quantile, including the median (0.5 quantile), lower quantiles (e.g., 0.25), 
+    and upper quantiles (e.g., 0.75). Special cases for quantiles at or near 0.5 are also handled appropriately.
+
+    Parameters:
+    -----------
+    v : array-like (numpy array or list)
+        The array of values for which the quantile is to be calculated.
+        
+    w_normalized : array-like (numpy array or list)
+        The corresponding weights for each value in `v`. These weights should be normalized such that their sum is 1.
+        
+    q : float
+        The desired quantile, a value between 0 and 1. For example, `q=0.5` corresponds to the median.
+
+    Returns:
+    --------
+    float
+        The weighted quantile of the provided values.
+
+    Raises:
+    -------
+    ValueError
+        If the lengths of `v` and `w_normalized` do not match.
+        If the sum of `w_normalized` is not close to 1 (within a tolerance of 0.01).
+        If `q` is not between 0 and 1.
+    
+    Notes:
+    ------
+    - The function first sorts the values `v` along with their corresponding weights.
+    - It then computes the cumulative sum of the sorted weights.
+    - The function identifies the index at which the cumulative weight first meets or exceeds the desired quantile `q`.
+    - For `q > 0.5`, the function returns the value corresponding to this index.
+    - For `q < 0.5`, the function considers special cases and may return the previous value if the cumulative weight equals `q`.
+    - For `q == 0.5`, the function either returns the median value or, if the cumulative weight is exactly 0.5, a weighted average of the values around this point.
+
+    Example:
+    --------
+    Suppose you have the following data:
+    - Values (`v`): [10, 20, 30]
+    - Weights (`w_normalized`): [0.2, 0.5, 0.3]
+    - Quantile (`q`): 0.7
+    
+    The function will return 20 as the 0.7 quantile, because the cumulative weight first exceeds 0.7 at the second value.
+
+    """
+
+def get_insample_scores(self, Xaug_n1xp, ytrain_n):
+    """
+    Compute in-sample scores (residuals) using a model trained on all n + 1 data points, including both training points and a candidate test point.
+
+    This function calculates the residuals (or conformity scores) for each training point and a candidate test point. 
+    The residuals are computed using a model trained on all available data points, including the candidate test point. 
+    The function is useful in conformal prediction for determining how well the model's predictions conform to the actual values.
+
+    Parameters:
+    -----------
+    Xaug_n1xp : numpy array of shape (n + 1, p)
+        The augmented design matrix that includes both the n training points and 1 candidate test point. 
+        Each row corresponds to a data point, and each column corresponds to a feature.
+
+    ytrain_n : numpy array of shape (n,)
+        The true labels for the n training points.
+
+    Returns:
+    --------
+    scoresis_n1xy : numpy array of shape (n + 1, |Y|)
+        The in-sample conformity scores for each training point and the candidate test point across all possible candidate labels. 
+        The last row corresponds to the scores for the candidate test point.
+
+    Notes:
+    ------
+    - This function first computes the matrix product (X^TX + \gamma I)^{-1} X^T using the `get_invcov_dot_xt` function.
+    - It then calculates linear predictions for each data point (both training and test) and for each possible candidate label.
+    - The in-sample scores are the absolute differences between the true labels and the predicted values (residuals).
+    - The scores provide a measure of how well the model trained on the full dataset fits each point, which is crucial in conformal prediction.
+
+    Example:
+    --------
+    Suppose you have a training dataset with 100 points and a candidate test point, and you are considering 10 possible labels (|Y| = 10):
+
+    Xaug_n1xp = numpy array of shape (101, 5)  # 100 training points + 1 test point, each with 5 features
+    ytrain_n = numpy array of shape (100,)     # True labels for the 100 training points
+
+    scores = self.get_insample_scores(Xaug_n1xp, ytrain_n)
+
+    This would return a numpy array of shape (101, 10) containing the in-sample scores for each data point across all candidate labels.
+
+    """
+
+def compute_loo_scores_and_lrs(self, Xaug_n1xp, ytrain_n, lmbda, compute_weights: bool = True, depth_max=1):
+    """
+    Compute Leave-One-Out (LOO) scores and optionally compute MFCS CP weights.
+
+    This function calculates the Leave-One-Out (LOO) scores for each training point by training a model on 
+    all but one of the training points and the candidate test point. Additionally, it computes the MFCS 
+    Conformal Prediction (CP) weights if requested, which are used for estimating the coverage probability.
+
+    Parameters:
+    -----------
+    Xaug_n1xp : numpy array of shape (n + 1, p)
+        The augmented design matrix that includes n training points and 1 candidate test point. 
+        Each row corresponds to a data point, and each column corresponds to a feature.
+
+    ytrain_n : numpy array of shape (n,)
+        The true labels for the n training points.
+
+    lmbda : float
+        The shift magnitude, also known as the inverse temperature of the design algorithm. 
+        This parameter controls the strength of the regularization.
+
+    compute_weights : bool, optional, default=True
+        Whether or not to compute MFCS CP weights for calibration and test points. 
+        This part of the computation is time-consuming, so set this to False if you only 
+        want to compute the LOO scores.
+
+    depth_max : int, optional, default=1
+        The maximum depth for the recursive estimation process. 
+        This parameter controls the level of depth in the calculation of weights.
+
+    Returns:
+    --------
+    scoresloo_n1xy : numpy array of shape (n + 1, |Y|)
+        The Leave-One-Out scores for each training point and the candidate test point across all possible candidate labels.
+
+    w_n1xy_adjusted : numpy array of shape (n + 1, |Y|), or None
+        The adjusted MFCS CP weights for each training point and the candidate test point across all candidate labels.
+        If `compute_weights` is False, this will be returned as None.
+
+    Raises:
+    -------
+    ValueError
+        If `depth_max` is less than 1.
+
+    Notes:
+    ------
+    - The function starts by computing the "one-step" full conformal prediction LOO scores and weights using ridge regression.
+    - If `compute_weights` is set to True, the function adjusts the weights recursively based on the specified `depth_max`.
+    - For each training point, the LOO score is calculated by leaving out that specific training point and using the rest of the data to make a prediction.
+    - The function supports deeper recursive adjustments of the weights, as described in the referenced paper's Appendix B.2.
+
+    Example:
+    --------
+    Suppose you have a dataset with 100 training points and a candidate test point, and you want to compute the LOO scores and weights:
+
+    Xaug_n1xp = numpy array of shape (101, 5)  # 100 training points + 1 test point, each with 5 features
+    ytrain_n = numpy array of shape (100,)     # True labels for the 100 training points
+
+    scores, weights = self.compute_loo_scores_and_lrs(Xaug_n1xp, ytrain_n, lmbda=0.1, compute_weights=True, depth_max=2)
+
+    This would return the LOO scores and adjusted weights, which are used to assess the model's performance and uncertainty.
+
+    """
+
+def compute_mfcs_full_cp_scores_weights_ridge_helper(self, Xaug_n1xp_, ytrain_n_, lmbda, depth_max, includes_test: bool = True):
+    """
+    Recursively compute MFCS full conformal prediction scores and adjust weights using ridge regression.
+
+    This function serves as a helper to recursively calculate the multi-step feedback covariate shift (MFCS) 
+    full conformal prediction scores and adjust the associated weights using ridge regression. The process involves 
+    leaving out one data point at a time and recursively summing the weights across the remaining points.
+
+    Parameters:
+    -----------
+    Xaug_n1xp_ : numpy array of shape (n + 1, p)
+        The augmented design matrix that includes n training points and 1 candidate test point.
+        Each row corresponds to a data point, and each column corresponds to a feature.
+
+    ytrain_n_ : numpy array of shape (n,)
+        The true labels for the n training points.
+
+    lmbda : float
+        The regularization strength for ridge regression, controlling the impact of the regularization term.
+
+    depth_max : int
+        The maximum depth for the recursive estimation process. This parameter controls how deeply the 
+        function will recurse when adjusting weights.
+
+    includes_test : bool, optional, default=True
+        A flag indicating whether to include the test point in the calculation. If False, the test point is excluded 
+        from certain steps of the recursive weight adjustment.
+
+    Returns:
+    --------
+    summation : numpy array of shape (|Y|,)
+        The cumulative summation of adjusted weights across the recursive depth, representing the adjusted 
+        weights for each candidate label.
+
+    Notes:
+    ------
+    - The function starts by computing the "one-step" full conformal prediction LOO scores and weights using ridge regression.
+    - If `depth_max` is 1, the function simply returns the sum of weights.
+    - For `depth_max` greater than 1, the function recursively adjusts the weights for each training point, summing them across 
+      all depths as described in Equation (16) in Appendix B.2 of the referenced paper.
+    - The `includes_test` flag modifies the computation process slightly when the test point is left out, ensuring that only 
+      the relevant training points are considered.
+
+    Example:
+    --------
+    Suppose you have a dataset with 100 training points and a candidate test point, and you want to recursively compute 
+    the MFCS full CP scores and adjust weights:
+
+    Xaug_n1xp_ = numpy array of shape (101, 5)  # 100 training points + 1 test point, each with 5 features
+    ytrain_n_ = numpy array of shape (100,)     # True labels for the 100 training points
+
+    summation = self.compute_mfcs_full_cp_scores_weights_ridge_helper(Xaug_n1xp_, ytrain_n_, lmbda=0.1, depth_max=2)
+
+    This would return a numpy array of shape (|Y|,) containing the cumulative summation of adjusted weights across the recursive depth.
+
+    """
+
+def compute_onestep_full_cp_loo_scores_weights_ridge(self, Xaug_n1xp, ytrain_n, lmbda, compute_weights: bool = True, includes_test: bool = True):
+    """
+    Compute one-step full conformal prediction LOO scores and weights using ridge regression.
+
+    This function calculates the Leave-One-Out (LOO) scores and corresponding weights for each data point in the training set,
+    as well as for a candidate test point, using ridge regression. The scores reflect how well each candidate label 
+    conforms to the data, and the weights are used in conformal prediction to adjust the prediction intervals or sets.
+
+    Parameters:
+    -----------
+    Xaug_n1xp : numpy array of shape (n + 1, p)
+        The augmented design matrix that includes n training points and 1 candidate test point. 
+        Each row corresponds to a data point, and each column corresponds to a feature.
+
+    ytrain_n : numpy array of shape (n,)
+        The true labels for the n training points.
+
+    lmbda : float
+        The regularization strength, controlling the ridge regression's penalty term.
+
+    compute_weights : bool, optional, default=True
+        Whether to compute the weights for the conformal prediction. If set to False, only the LOO scores are computed.
+
+    includes_test : bool, optional, default=True
+        A flag indicating whether the last row in Xaug_n1xp represents a test point. If True, the last row is treated as 
+        the test point, and the function computes scores and weights accordingly.
+
+    Returns:
+    --------
+    scoresloo_n1xy : numpy array of shape (n + 1, |Y|)
+        The LOO scores for each training point and the candidate test point across all possible candidate labels.
+
+    w_n1xy : numpy array of shape (n + 1, |Y|), or None
+        The weights for each training point and the candidate test point across all possible candidate labels. 
+        If compute_weights is False, this is returned as None.
+
+    Notes:
+    ------
+    - The function first calculates the LOO scores by iterating through the training points and fitting models that 
+      exclude each point one at a time.
+    - If includes_test is True, the last row of Xaug_n1xp is treated as a test point, and its score is computed separately.
+    - If compute_weights is True, the function calculates the weights using a log-linear model, which are essential 
+      for constructing conformal prediction intervals or sets.
+    - The method is adapted from Fannjiang et al. (2022) "Conformal prediction under feedback covariate shift for biomolecular design" 
+      and follows the notation and algorithmic details provided in the appendix of that paper.
+
+    Example:
+    --------
+    Suppose you have a dataset with 100 training points and a candidate test point, each with 5 features:
+
+    Xaug_n1xp = numpy array of shape (101, 5)  # 100 training points + 1 test point
+    ytrain_n = numpy array of shape (100,)     # True labels for the 100 training points
+
+    scores, weights = self.compute_onestep_full_cp_loo_scores_weights_ridge(Xaug_n1xp, ytrain_n, lmbda=0.1, compute_weights=True, includes_test=True)
+
+    This would return the LOO scores and weights for all data points, including the candidate test point.
+
+    """
+
+def compute_confidence_sets(self, Xtrain_nxp, ytrain_n, Xtest_1xp, lmbda, alpha: float = 0.1, depth_max=1, use_is_scores: bool = False):
+    """
+    Compute conformal prediction confidence sets for a test point using in-sample and Leave-One-Out (LOO) scores.
+
+    This function generates confidence sets for a candidate test point based on conformal prediction methods.
+    It can use either LOO scores or in-sample scores to determine which candidate labels are included in the 
+    confidence set, ensuring that the true label is captured with a specified confidence level.
+
+    Parameters:
+    -----------
+    Xtrain_nxp : numpy array of shape (n, p)
+        The design matrix for the training data, where n is the number of training points and p is the number of features.
+
+    ytrain_n : numpy array of shape (n,)
+        The true labels for the n training points.
+
+    Xtest_1xp : numpy array of shape (1, p)
+        The feature vector for the test point, which will be used to generate the confidence sets.
+
+    lmbda : float
+        The regularization strength for the ridge regression, controlling the impact of the regularization term.
+
+    alpha : float, optional, default=0.1
+        The significance level for the confidence sets. The confidence level will be 1 - alpha.
+
+    depth_max : int, optional, default=1
+        The maximum depth for the recursive weight adjustment process in conformal prediction.
+
+    use_is_scores : bool, optional, default=False
+        Whether to use in-sample scores (if True) or rely solely on LOO scores (if False) for generating confidence sets.
+
+    Returns:
+    --------
+    loo_cs : numpy array
+        The confidence set based on LOO scores, containing the candidate labels that are included at the specified confidence level.
+
+    is_cs : numpy array or None
+        The confidence set based on in-sample scores, if use_is_scores is True. If use_is_scores is False, this is returned as None.
+
+    Raises:
+    -------
+    ValueError
+        If the feature dimension of Xtrain_nxp does not match the expected dimension of self.Xuniv_uxp.
+
+    Notes:
+    ------
+    - The function first augments the training matrix with the test point and then computes both in-sample and LOO scores.
+    - It constructs the confidence sets by comparing the scores to quantiles derived from the weighted scores.
+    - The confidence sets are constructed such that they contain the true label with a probability of 1 - alpha.
+
+    Example:
+    --------
+    Suppose you have a training dataset with 100 points and a test point:
+
+    Xtrain_nxp = numpy array of shape (100, 5)  # 100 training points with 5 features
+    ytrain_n = numpy array of shape (100,)      # True labels for the 100 training points
+    Xtest_1xp = numpy array of shape (1, 5)     # 1 test point with 5 features
+
+    loo_cs, is_cs = self.compute_confidence_sets(Xtrain_nxp, ytrain_n, Xtest_1xp, lmbda=0.1, alpha=0.1, depth_max=2, use_is_scores=True)
+
+    This would return the confidence sets based on LOO and in-sample scores for the test point, ensuring the true label is included with a confidence level of 90%.
+
+    """
+
+def get_scores(model, Xaug_nxp, yaug_n, use_loo_score: bool = False):
+    """
+    Compute prediction scores (residuals) for a given model, using either Leave-One-Out (LOO) or in-sample scores.
+
+    This function calculates the prediction scores for a given dataset using a specified model. The scores can be 
+    calculated in two ways: Leave-One-Out (LOO) scores, where the model is trained on all but one data point and 
+    tested on the excluded point, or in-sample scores, where the model is trained and tested on the entire dataset.
+
+    Parameters:
+    -----------
+    model : object
+        A machine learning model that implements the `fit` and `predict` methods. This model will be used to compute the scores.
+
+    Xaug_nxp : numpy array of shape (n, p)
+        The feature matrix for the dataset, where `n` is the number of data points and `p` is the number of features.
+
+    yaug_n : numpy array of shape (n,)
+        The true labels for the dataset, corresponding to the data points in `Xaug_nxp`.
+
+    use_loo_score : bool, optional, default=False
+        If set to True, the function computes LOO scores. If False, it computes in-sample scores.
+
+    Returns:
+    --------
+    scores_n1 : numpy array of shape (n,)
+        The computed prediction scores (residuals) for each data point in the dataset.
+
+    Notes:
+    ------
+    - LOO Scores: The model is trained on all data points except one, and the prediction error (residual) for the excluded point is calculated.
+    - In-Sample Scores: The model is trained on the entire dataset, and the residuals are calculated for each point based on this model.
+    - This function is useful for assessing the performance of a model using different scoring methods.
+
+    Example:
+    --------
+    Suppose you have a dataset with 100 points and a model:
+
+    Xaug_nxp = numpy array of shape (100, 5)  # 100 data points with 5 features each
+    yaug_n = numpy array of shape (100,)      # True labels for the 100 data points
+
+    scores = get_scores(model, Xaug_nxp, yaug_n, use_loo_score=True)
+
+    This would return the LOO scores for each data point in the dataset.
+    """
+
+def compute_confidence_sets(self, Xtrain_nxp, ytrain_n, Xtest_1xp, lmbda,
+                           use_loo_score: bool = True, alpha: float = 0.1, print_every: int = 10, verbose: bool = True):
+    """
+    Compute conformal prediction confidence sets for a test point using scores and likelihood ratios.
+
+    This function generates confidence sets for a candidate test point using conformal prediction methods. 
+    The confidence sets are computed based on either Leave-One-Out (LOO) scores or in-sample scores, depending on the `use_loo_score` flag. 
+    The function also calculates likelihood ratios to adjust the scores and determine which candidate labels should be included 
+    in the final confidence set.
+
+    Parameters:
+    -----------
+    Xtrain_nxp : numpy array of shape (n, p)
+        The design matrix for the training data, where `n` is the number of training points and `p` is the number of features.
+
+    ytrain_n : numpy array of shape (n,)
+        The true labels for the `n` training points.
+
+    Xtest_1xp : numpy array of shape (1, p)
+        The feature vector for the test point, which will be used to generate the confidence sets.
+
+    lmbda : float
+        The regularization strength (inverse temperature) for the likelihood ratio calculations.
+
+    use_loo_score : bool, optional, default=True
+        Whether to compute LOO scores (if True) or in-sample scores (if False).
+
+    alpha : float, optional, default=0.1
+        The significance level for the confidence sets. The confidence level will be `1 - alpha`.
+
+    print_every : int, optional, default=10
+        Frequency of progress updates. If `verbose` is True, this controls how often the function prints progress information.
+
+    verbose : bool, optional, default=True
+        If True, the function prints progress updates as it computes the confidence sets.
+
+    Returns:
+    --------
+    cs : numpy array
+        The confidence set containing the candidate labels included at the specified confidence level.
+
+    scores_n1xy : numpy array of shape (n + 1, |Y|)
+        The computed scores for each data point and candidate label.
+
+    w_n1xy : numpy array of shape (n + 1, |Y|)
+        The computed likelihood ratios (weights) for each data point and candidate label.
+
+    Raises:
+    -------
+    ValueError
+        If the feature dimension of `Xtrain_nxp` does not match the expected dimension of `self.Xuniv_uxp`.
+
+    Notes:
+    ------
+    - The function first augments the training matrix with the test point and then iterates over all candidate labels `y`.
+    - For each label, it calculates the prediction scores using either LOO or in-sample methods and then computes likelihood ratios.
+    - It constructs the confidence sets by comparing the scores to quantiles derived from the weighted scores.
+    - Progress updates are printed if `verbose` is set to True, with the frequency controlled by `print_every`.
+
+    Example:
+    --------
+    Suppose you have a training dataset with 100 points and a test point:
+
+    Xtrain_nxp = numpy array of shape (100, 5)  # 100 training points with 5 features each
+    ytrain_n = numpy array of shape (100,)      # True labels for the 100 training points
+    Xtest_1xp = numpy array of shape (1, 5)     # 1 test point with 5 features
+
+    cs, scores, weights = self.compute_confidence_sets(Xtrain_nxp, ytrain_n, Xtest_1xp, lmbda=0.1, alpha=0.1, print_every=10, verbose=True)
+
+    This would return the confidence set for the test point, along with the scores and weights for each candidate label.
+
+    """
+
+def compute_confidence_sets_design(self, Xtrain_split, Xcal_split, ytrain_split, ycal_split, Xtest_n1xp_split, ytest_n1_split, Xpool_split, w_split_mus_prev_steps, method_names, weight_bounds, t_cal, X_dataset, weight_depth_maxes=[1, 2], lmbda=1/10, bandwidth=1.0, alpha: float = 0.1, n_initial_all=100, n_dataset=None, replacement=True):
+    """
+    Compute confidence intervals for test points using split conformal methods, including weighted split conformal methods with feedback covariate shift (FCS).
+
+    This function generates prediction intervals (confidence sets) for test points based on standard split conformal methods 
+    and weighted split conformal methods, accounting for feedback covariate shift (FCS). The prediction intervals are computed 
+    based on a series of models and their corresponding residuals, which are used to adjust the intervals.
+
+    Parameters:
+    -----------
+    Xtrain_split : numpy array of shape (n_train, p)
+        The training design matrix, where n_train is the number of training points and p is the number of features.
+
+    Xcal_split : numpy array of shape (n_cal, p)
+        The calibration design matrix, where n_cal is the number of calibration points and p is the number of features.
+
+    ytrain_split : numpy array of shape (n_train,)
+        The true labels for the training points.
+
+    ycal_split : numpy array of shape (n_cal,)
+        The true labels for the calibration points.
+
+    Xtest_n1xp_split : numpy array of shape (n_test, p)
+        The feature matrix for the test points.
+
+    ytest_n1_split : numpy array of shape (n_test,)
+        The true labels for the test points (usually unknown during testing but used here for design purposes).
+
+    Xpool_split : numpy array of shape (n_pool, p)
+        The pool of data points available for querying, used in the active learning setting.
+
+    w_split_mus_prev_steps : list
+        A list of previously trained models (used for querying calibration points in previous steps).
+
+    method_names : list of str
+        A list of method names corresponding to different split conformal methods.
+
+    weight_bounds : list of float
+        The bounds for weights at each depth level in the weighted split conformal methods.
+
+    t_cal : int
+        The current calibration time step (iteration).
+
+    X_dataset : numpy array
+        The dataset used for the experiment, which may be needed for some operations within the function.
+
+    weight_depth_maxes : list of int, optional, default=[1, 2]
+        The maximum depths to consider for weight adjustment in the weighted split conformal methods.
+
+    lmbda : float, optional, default=1/10
+        The inverse temperature parameter controlling the steepness of the weight function.
+
+    bandwidth : float, optional, default=1.0
+        Bandwidth parameter used in kernel density estimation, if applicable.
+
+    alpha : float, optional, default=0.1
+        The significance level for the prediction intervals. The confidence level will be 1 - alpha.
+
+    n_initial_all : int, optional, default=100
+        The initial number of samples used in the experiment.
+
+    n_dataset : int, optional, default=None
+        The size of the full dataset, if specified.
+
+    replacement : bool, optional, default=True
+        Whether to sample with replacement when adjusting weights.
+
+    Returns:
+    --------
+    PIs_dict : dict
+        A dictionary containing the prediction intervals (lower and upper bounds) for each method.
+
+    w_split_mus_prev_and_curr_steps : list
+        A list containing all models used for querying, including the current model.
+
+    Raises:
+    -------
+    ValueError
+        If the feature dimension of `Xtrain_split` does not match the expected dimension of `self.Xuniv_uxp`.
+
+    Notes:
+    ------
+    - This function first computes standard split conformal prediction intervals.
+    - It then computes weighted split conformal prediction intervals, taking into account previous models used for active learning.
+    - Weights are computed based on previous steps and are adjusted according to the specified depth and weight bounds.
+
+    Example:
+    --------
+    Suppose you have a split conformal prediction setup with training, calibration, and test data:
+
+    Xtrain_split = numpy array of shape (100, 5)  # 100 training points with 5 features
+    Xcal_split = numpy array of shape (50, 5)     # 50 calibration points with 5 features
+    ytrain_split = numpy array of shape (100,)    # True labels for the 100 training points
+    ycal_split = numpy array of shape (50,)       # True labels for the 50 calibration points
+    Xtest_n1xp_split = numpy array of shape (1, 5)  # 1 test point with 5 features
+    Xpool_split = numpy array of shape (200, 5)   # 200 pool points with 5 features
+
+    PIs_dict, w_split_mus_prev_and_curr_steps = self.compute_confidence_sets_design(
+        Xtrain_split, Xcal_split, ytrain_split, ycal_split, Xtest_n1xp_split, None, Xpool_split,
+        w_split_mus_prev_steps=[], method_names=["split", "wsplit_1", "wsplit_2"], weight_bounds=[1.0, 2.0], 
+        t_cal=1, X_dataset=None, weight_depth_maxes=[1, 2], lmbda=0.1, bandwidth=1.0, alpha=0.1, n_initial_all=100, n_dataset=200, replacement=True)
+
+    This would return the prediction intervals for the test point using standard and weighted split conformal methods.
+
+    """
+
+def compute_confidence_sets_active(self, Xtrain_split, Xcal_split, ytrain_split, ycal_split, Xtest_n1xp_split, ytest_n1_split, Xpool_split, w_split_mus_prev_steps, exp_vals_pool_list_of_vecs_all_steps, method_names, t_cal, X_dataset, n_cal_initial, alpha_aci_curr, weight_bounds, weight_depth_maxes=[1, 2], lmbda=1/10, bandwidth=1.0, alpha: float = 0.1, n_initial_all=100, n_dataset=None, replacement=True, record_weights=False):
+    """
+    Compute active learning-based confidence sets for test points using split conformal methods, including weighted split conformal methods with feedback covariate shift (FCS).
+
+    This function generates prediction intervals (confidence sets) for test points based on split conformal methods with active learning.
+    The method accounts for feedback covariate shift (FCS) and leverages previous model queries to adjust the prediction intervals. 
+    It supports both one-step and multistep FCS adjustments, with options for sampling with or without replacement.
+
+    Parameters:
+    -----------
+    Xtrain_split : numpy array of shape (n_train, p)
+        The training design matrix, where n_train is the number of training points and p is the number of features.
+
+    Xcal_split : numpy array of shape (n_cal, p)
+        The calibration design matrix, where n_cal is the number of calibration points and p is the number of features.
+
+    ytrain_split : numpy array of shape (n_train,)
+        The true labels for the training points.
+
+    ycal_split : numpy array of shape (n_cal,)
+        The true labels for the calibration points.
+
+    Xtest_n1xp_split : numpy array of shape (n_test, p)
+        The feature matrix for the test points.
+
+    ytest_n1_split : numpy array of shape (n_test,)
+        The true labels for the test points (usually unknown during testing but used here for design purposes).
+
+    Xpool_split : numpy array of shape (n_pool, p)
+        The pool of data points available for querying, used in the active learning setting.
+
+    w_split_mus_prev_steps : list
+        A list of previously trained models (used for querying calibration points in previous steps).
+
+    exp_vals_pool_list_of_vecs_all_steps : list of numpy arrays
+        A list of vectors containing exponentiated values for the pool points across all steps.
+
+    method_names : list of str
+        A list of method names corresponding to different split conformal methods.
+
+    t_cal : int
+        The current calibration time step (iteration).
+
+    X_dataset : numpy array
+        The dataset used for the experiment, which may be needed for some operations within the function.
+
+    n_cal_initial : int
+        The initial number of calibration points.
+
+    alpha_aci_curr : float
+        The current alpha level for the active learning confidence interval (ACI).
+
+    weight_bounds : list of float
+        The bounds for weights at each depth level in the weighted split conformal methods.
+
+    weight_depth_maxes : list of int, optional, default=[1, 2]
+        The maximum depths to consider for weight adjustment in the weighted split conformal methods.
+
+    lmbda : float, optional, default=1/10
+        The inverse temperature parameter controlling the steepness of the weight function.
+
+    bandwidth : float, optional, default=1.0
+        Bandwidth parameter used in kernel density estimation, if applicable.
+
+    alpha : float, optional, default=0.1
+        The significance level for the prediction intervals. The confidence level will be 1 - alpha.
+
+    n_initial_all : int, optional, default=100
+        The initial number of samples used in the experiment.
+
+    n_dataset : int, optional, default=None
+        The size of the full dataset, if specified.
+
+    replacement : bool, optional, default=True
+        Whether to sample with replacement when adjusting weights.
+
+    record_weights : bool, optional, default=False
+        Whether to record the weights at each step for further analysis.
+
+    Returns:
+    --------
+    PIs_dict : dict
+        A dictionary containing the prediction intervals (lower and upper bounds) for each method.
+
+    w_split_mus_prev_steps : list
+        A list containing all models used for querying, including the current model.
+
+    weights_normalized_wsplit_all : list
+        A list of normalized weights at each step if `record_weights` is True. Otherwise, returns an empty list.
+
+    Raises:
+    -------
+    ValueError
+        If the feature dimension of `Xtrain_split` does not match the expected dimension of `self.Xuniv_uxp`.
+
+    Notes:
+    ------
+    - This function first computes standard split conformal prediction intervals.
+    - It then computes weighted split conformal prediction intervals using active learning methods, considering previous models and their predictions.
+    - Weights are computed based on previous steps and are adjusted according to the specified depth and weight bounds.
+    - The function supports both one-step and multistep adjustments, with options to record the weight evolution over time.
+
+    Example:
+    --------
+    Suppose you have a split conformal prediction setup with training, calibration, and test data:
+
+    Xtrain_split = numpy array of shape (100, 5)  # 100 training points with 5 features
+    Xcal_split = numpy array of shape (50, 5)     # 50 calibration points with 5 features
+    ytrain_split = numpy array of shape (100,)    # True labels for the 100 training points
+    ycal_split = numpy array of shape (50,)       # True labels for the 50 calibration points
+    Xtest_n1xp_split = numpy array of shape (1, 5)  # 1 test point with 5 features
+    Xpool_split = numpy array of shape (200, 5)   # 200 pool points with 5 features
+
+    PIs_dict, w_split_mus_prev_steps, weights_normalized_wsplit_all = self.compute_confidence_sets_active(
+        Xtrain_split, Xcal_split, ytrain_split, ycal_split, Xtest_n1xp_split, None, Xpool_split,
+        w_split_mus_prev_steps=[], exp_vals_pool_list_of_vecs_all_steps=[], method_names=["split", "wsplit_1", "wsplit_2"], 
+        t_cal=1, X_dataset=None, n_cal_initial=50, alpha_aci_curr=0.1, weight_bounds=[1.0, 2.0], 
+        weight_depth_maxes=[1, 2], lmbda=0.1, bandwidth=1.0, alpha=0.1, n_initial_all=100, n_dataset=200, replacement=True, record_weights=True)
+
+    This would return the prediction intervals for the test point using active learning-based split conformal methods, and optionally record the evolution of weights over time.
+
+    """
+
+def get_lrs(self, Xaug_n1xp, yaug_n1, lmbda):
+    """
+    Compute likelihood ratios (LRs) for a given dataset using a Leave-One-Out (LOO) model approach.
+
+    This function calculates the likelihood ratios for each data point in the augmented dataset by fitting a 
+    Leave-One-Out (LOO) model for each point. The likelihood ratios are computed as the ratio of the likelihood 
+    of the data point under the LOO model to the likelihood under the full model, adjusted by a normalizing constant.
+
+    Parameters:
+    -----------
+    Xaug_n1xp : numpy array of shape (n+1, p)
+        The augmented design matrix, including n training points and 1 candidate test point. 
+        Each row corresponds to a data point, and each column corresponds to a feature.
+
+    yaug_n1 : numpy array of shape (n+1,)
+        The true labels corresponding to the data points in `Xaug_n1xp`.
+
+    lmbda : float
+        The inverse temperature parameter, controlling the steepness of the exponential weighting.
+
+    Returns:
+    --------
+    w_n1 : numpy array of shape (n+1,)
+        The computed likelihood ratios for each data point in the augmented dataset.
+
+    Notes:
+    ------
+    - The function iterates through each data point in the augmented dataset, leaving one out at a time.
+    - For each LOO model, it computes a normalizing constant `Z` based on predictions over a universal feature space.
+    - The likelihood ratio for each point is then computed by comparing the likelihood under the LOO model 
+      with the likelihood under the full model, adjusted by the normalizing constant.
+
+    Example:
+    --------
+    Suppose you have a dataset with 100 training points and 1 test point:
+
+    Xaug_n1xp = numpy array of shape (101, 5)  # 100 training points + 1 test point, each with 5 features
+    yaug_n1 = numpy array of shape (101,)      # True labels for the 101 data points
+
+    likelihood_ratios = self.get_lrs(Xaug_n1xp, yaug_n1, lmbda=0.1)
+
+    This would return the likelihood ratios for each of the 101 data points.
+
+    """
+
+Leave-One-Out (LOO) vs in-sample scores
+    Leave-One-Out (LOO) Scores:
+
+        •	LOO scores are computed by training the model on all data points except one and predicting the excluded point. This process is repeated for each point in the dataset, providing an estimate of the model’s generalization ability.
+
+    In-Sample Scores:
+
+        •	In-sample scores are calculated by training the model on the entire dataset and predicting the same dataset. This method assesses how well the model fits the training data.
+
+    Key Differences:
+
+        •	Generalization: LOO assesses how well the model can generalize to new data, while in-sample scores measure fit on the training data.
+        •	Overfitting: LOO helps detect overfitting, whereas in-sample scores might hide it.
+        •	Computational Cost: LOO is more computationally intensive compared to in-sample scores.
