@@ -744,3 +744,13 @@ Leave-One-Out (LOO) vs in-sample scores
         •	Generalization: LOO assesses how well the model can generalize to new data, while in-sample scores measure fit on the training data.
         •	Overfitting: LOO helps detect overfitting, whereas in-sample scores might hide it.
         •	Computational Cost: LOO is more computationally intensive compared to in-sample scores.
+
+
+2024-09-11_FullCPMFCS_Florescent_ridge_nInit32_steps5_nseed1000_lmbda8.0_reg0.01_depth2_initialDataDistributionFlorescent_newDataPointsDistributionNormal
+    * sampled datapoints close to the mean, method 3 of sampling
+
+2024-09-13_FullCPMFCS_Florescent_ridge_nInit32_steps5_nseed1000_lmbda8.0_reg0.01_depth2_initialDataDistributionFlorescent_newDataPointsDistributionNormal
+    * sampled datapoints farest to the mean, method 3 of sampling
+
+2024-09-14_FullCPMFCS_Florescent_ridge_nInit32_steps5_nseed1000_lmbda8.0_reg0.01_depth2_initialDataDistributionFlorescent_newDataPointsDistributionNormal_samplingMethod1
+    * sampled datapoints according to method 1 - using these results!

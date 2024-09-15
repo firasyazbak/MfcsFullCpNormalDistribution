@@ -580,3 +580,316 @@ class PoelwijkData(Assay):
         # enforce non-negative measurement since enrichment scores are always non-negative
         return np.fmax(noisy_n, 0)
 
+
+############################################################################################################################
+######################################################    OUR CODE    ######################################################
+############################################################################################################################
+    
+def get_noisy_measurements(y_true, noise_std=0.1, seed=None):
+    """
+    Add noise to synthetic labels to simulate measurement noise.
+    
+    :param y_true: numpy array of true labels
+    :param noise_std: float, standard deviation of noise to be added
+    :param seed: int, random seed for reproducibility
+    :return: numpy array of noisy labels
+    """
+    rng = np.random.default_rng(seed)
+    noisy_labels = rng.normal(loc=y_true, scale=noise_std, size=len(y_true))
+    return np.fmax(noisy_labels, 0)  # Ensure non-negative measurements if required
+
+def get_training_and_designed_data_synthetic(X, y, n, gamma, lmbda, seed: int = None, n1=1, replace=True, noise_std=0.1):
+    """
+    Sample training data from synthetic data and introduce noisy measurements.
+    
+    :param X: numpy array of shape (n_samples, n_features), the feature matrix of synthetic data
+    :param y: numpy array of shape (n_samples,), the true labels corresponding to X
+    :param n: int, number of training points
+    :param gamma: float, ridge regularization strength
+    :param lmbda: float, inverse temperature of design algorithm
+    :param seed: int, random seed for reproducibility
+    :param noise_std: float, standard deviation of noise to add to the measurements
+    :return: numpy arrays of training sequences, noisy training labels, designed sequence, noisy label, and prediction
+    """
+    # Sample training data
+    rng = np.random.default_rng(seed)
+    train_idx = rng.choice(len(X), n, replace=True)
+    Xtrain_nxp, ytrain_n = X[train_idx], y[train_idx]  # Get training data
+
+    # Add noise to the training labels
+    ytrain_noisy = get_noisy_measurements(ytrain_n, noise_std=noise_std, seed=seed)
+
+    # Train using the custom ridge regression
+    A_pxn = get_invcov_dot_xt(Xtrain_nxp, gamma, use_lapack=True)
+    beta_p = A_pxn.dot(ytrain_noisy)  # Ridge regression coefficients using noisy labels
+
+    # Predict all data points to construct test input distribution
+    predall_n = X.dot(beta_p)
+    punnorm_n = np.exp(lmbda * predall_n)
+    Z = np.sum(punnorm_n)
+
+    # Draw test input (index of designed sequence)
+    test_idx = rng.choice(len(X), n1, replace=replace, p=punnorm_n / Z if lmbda else None)
+    Xtest_n1xp = X[test_idx]
+
+    # Get noisy test label
+    ytest_n1 = y[test_idx]
+    ytest_noisy = get_noisy_measurements(ytest_n1, noise_std=noise_std, seed=seed)
+    pred_n1 = Xtest_n1xp.dot(beta_p)
+    
+    return Xtrain_nxp, ytrain_noisy, Xtest_n1xp, ytest_noisy, pred_n1
+
+def sample_new_designed_data_synthetic(X, y, Xtrain_nxp, ytrain_n, n, gamma, lmbda, seed: int = None, n1=1, replace=True, noise_std=0.1):
+    """
+    Sample one new test point (designed point) from the synthetic data based on the current training data.
+    
+    :param X: numpy array of shape (n_samples, n_features), the full synthetic feature matrix
+    :param y: numpy array of shape (n_samples,), the full synthetic label array
+    :param Xtrain_nxp: Training input data
+    :param ytrain_n: Training label data
+    :param n: int, number of training points
+    :param gamma: float, ridge regularization strength
+    :param lmbda: float, inverse temperature of design algorithm
+    :param seed: int, random seed for reproducibility
+    :param n1: int, number of test points to sample
+    :param replace: bool, whether to sample with replacement
+    :param noise_std: float, standard deviation for noise to be added to the measurements
+    :return: numpy arrays of designed sequence (test point), noisy label, and prediction
+    """
+    rng = np.random.default_rng(seed)
+    
+    # Train ridge regression model with the current training data
+    A_pxn = get_invcov_dot_xt(Xtrain_nxp, gamma, use_lapack=True)
+    beta_p = A_pxn.dot(ytrain_n)
+
+    # Construct test input distribution \tilde{p}_{X; Z_{1:n}}
+    predall_n = X.dot(beta_p)  # Predict the entire synthetic dataset
+    punnorm_n = np.exp(lmbda * predall_n)
+    Z = np.sum(punnorm_n)
+
+    # Draw test input (index of designed sequence) based on the distribution
+    test_idx = rng.choice(len(X), n1, replace=replace, p=punnorm_n / Z if lmbda else None)
+    Xtest_n1xp = X[test_idx]  # Selected test point (features)
+
+    # Get noisy measurement and prediction for the designed sequence
+    ytest_n1 = get_noisy_measurements(y[test_idx], noise_std=noise_std, seed=seed)
+    pred_n1 = Xtest_n1xp.dot(beta_p)
+    
+    return Xtest_n1xp, ytest_n1, pred_n1
+
+
+
+def get_training_and_designed_data_synthetic_normal(X, y, n, gamma, seed: int = None, n1=1, noise_std=0.1):
+    """
+    Sample training data from synthetic data and introduce noisy measurements, but sample new points from a normal distribution
+    based on previous points.
+    
+    :param X: numpy array of shape (n_samples, n_features), the feature matrix of synthetic data
+    :param y: numpy array of shape (n_samples,), the true labels corresponding to X
+    :param n: int, number of training points
+    :param gamma: float, ridge regularization strength
+    :param lmbda: float, not used here since we sample from normal distribution
+    :param seed: int, random seed for reproducibility
+    :param noise_std: float, standard deviation of noise to add to the measurements
+    :return: numpy arrays of training sequences, noisy training labels, designed sequence, noisy label, and prediction
+    """
+    # Sample training data
+    rng = np.random.default_rng(seed)
+    train_idx = rng.choice(len(X), n, replace=True)
+    Xtrain_nxp, ytrain_n = X[train_idx], y[train_idx]  # Get training data
+
+    # Add noise to the training labels
+    ytrain_noisy = get_noisy_measurements(ytrain_n, noise_std=noise_std, seed=seed)
+
+    # Train using the custom ridge regression
+    A_pxn = get_invcov_dot_xt(Xtrain_nxp, gamma, use_lapack=True)
+    beta_p = A_pxn.dot(ytrain_noisy)  # Ridge regression coefficients using noisy labels
+
+    # Predict all data points to construct test input distribution
+    predall_n = X.dot(beta_p)  # Predict for all points in the dataset
+
+    # Sample the new test points based on a normal distribution
+    mean_pred = np.mean(predall_n)  # Mean of predictions
+    std_pred = np.std(predall_n)    # Standard deviation of predictions
+    sampled_normal_preds = rng.normal(loc=mean_pred, scale=std_pred, size=len(predall_n))
+
+    # Get the test point based on the closest points to the normal distribution
+    test_idx = np.argsort(np.abs(predall_n - sampled_normal_preds))[:n1]
+    Xtest_n1xp = X[test_idx]  # Selected test points
+
+    # Get noisy test label
+    ytest_n1 = y[test_idx]
+    ytest_noisy = get_noisy_measurements(ytest_n1, noise_std=noise_std, seed=seed)
+
+    pred_n1 = Xtest_n1xp.dot(beta_p)  # Prediction for the test point
+    
+    return Xtrain_nxp, ytrain_noisy, Xtest_n1xp, ytest_noisy, pred_n1
+
+
+def sample_new_designed_data_synthetic_normal(X, y, Xtrain_nxp, ytrain_n, n, gamma, seed: int = None, n1=1, noise_std=0.1):
+    """
+    Sample one new test point (designed point) from the synthetic data based on the current training data using a normal distribution.
+
+    :param X: numpy array of shape (n_samples, n_features), the full synthetic feature matrix
+    :param y: numpy array of shape (n_samples,), the full synthetic label array
+    :param Xtrain_nxp: Training input data
+    :param ytrain_n: Training label data
+    :param n: int, number of training points
+    :param gamma: float, ridge regularization strength
+    :param seed: int, random seed for reproducibility
+    :param n1: int, number of test points to sample
+    :param replace: bool, whether to sample with replacement
+    :param noise_std: float, standard deviation for noise to be added to the measurements
+    :return: numpy arrays of designed sequence (test point), noisy label, and prediction
+    """    
+    rng = np.random.default_rng(seed)
+    
+    # Convert data to numpy arrays (no GPU involved)
+    X = np.array(X, dtype=np.float32)
+    y = np.array(y, dtype=np.float32)
+    Xtrain_nxp = np.array(Xtrain_nxp, dtype=np.float32)
+    ytrain_n = np.array(ytrain_n, dtype=np.float32)
+
+    # Train ridge regression model with the current training data
+    A_pxn = get_invcov_dot_xt(Xtrain_nxp, gamma, use_lapack=True)
+    beta_p = A_pxn.dot(ytrain_n)
+
+    # Predict all data points to construct test input distribution
+    predall_n = X.dot(beta_p)  # Predict the entire synthetic dataset
+    
+    # Calculate mean and variance of predictions to use in normal sampling
+    pred_mean = np.mean(predall_n)  # Mean of predictions
+    pred_std = np.std(predall_n)    # Standard deviation of predictions
+
+    # Sample new test point index from a normal distribution based on previous predictions
+    sampled_predictions = rng.normal(loc=predall_n, scale=pred_std, size=len(X))  # Sample from normal distribution
+    test_idx = np.argsort(np.abs(sampled_predictions - pred_mean))[:n1]  # Pick the closest points to the mean
+
+    # Select the corresponding test points
+    Xtest_n1xp = X[test_idx]
+
+    # Get noisy measurement and prediction for the designed sequence
+    ytest_n1 = y[test_idx]
+    ytest_noisy = get_noisy_measurements(ytest_n1, noise_std=noise_std, seed=seed)
+    pred_n1 = Xtest_n1xp.dot(beta_p)
+
+    return Xtest_n1xp, ytest_noisy, pred_n1
+
+
+def get_training_and_designed_data_fluorescent_normal(data, n, gamma, seed: int = None, n1=1, noise_std=0.1, method=1):
+    """
+    Sample training data and new designed points using a normal distribution with noise, influenced by previous data.
+    
+    :param data: assay.PoelwijkData object
+    :param n: int, number of training points
+    :param gamma: float, ridge regularization strength
+    :param seed: int, random seed
+    :param noise_std: float, standard deviation for added noise to the new samples
+    :return: numpy arrays of training sequences, training labels, designed sequence, label, and prediction
+    """
+
+    # Get random training data
+    rng = np.random.default_rng(seed)
+    train_idx = rng.choice(data.n, n, replace=True)
+    Xtrain_nxp, ytrain_n = data.X_nxp[train_idx], data.get_measurements(train_idx)  # get noisy measurements
+
+    # Train ridge regression model
+    A_pxn = get_invcov_dot_xt(Xtrain_nxp, gamma, use_lapack=True)
+    beta_p = A_pxn.dot(ytrain_n)
+
+    # Construct the predictions based on the training data
+    predall_n = data.X_nxp.dot(beta_p)
+
+    # Use predictions with added uncertainty to define the mean of a normal distribution
+    mean_pred = predall_n.mean()
+    std_pred = predall_n.std()
+
+
+    if method == 1:
+        ###################### Method 1 - Probability-Based Sampling According to Normal Distribution ######################
+        # Calculate probabilities for each predicted value based on normal distribution
+        probabilities = np.exp(-(predall_n - mean_pred)**2 / (2 * std_pred**2))
+        # Normalize probabilities to sum to 1
+        probabilities /= np.sum(probabilities)
+        # Sample test index based on these probabilities
+        test_idx = rng.choice(data.n, n1, p=probabilities)
+        # Retrieve the corresponding test point
+        Xtest_n1xp = data.X_nxp[test_idx]
+
+    elif method == 2:
+        ###################### Method 2 - Sampling One Point from Normal Distribution and Selecting Closest Prediction ######################
+        # Sample one point from the normal distribution with mean and variance from all predictions
+        sampled_point = rng.normal(loc=mean_pred, scale=std_pred, size=1)
+        # Find the closest prediction to this sampled point
+        test_idx = np.argmin(np.abs(predall_n - sampled_point))
+        # Retrieve the corresponding test point
+        test_idx = [test_idx]
+        Xtest_n1xp = data.X_nxp[test_idx]
+
+    else:
+        ###################### Method 3 - Sampling Index From Normal Distribution ######################
+        # Sample new test input (index of designed sequence) from a normal distribution and add noise
+        normal_samples = rng.normal(loc=mean_pred, scale=std_pred, size=len(predall_n))
+        test_idx = np.argsort(np.abs(normal_samples - mean_pred))[-n1:]  # Select the farest points
+        Xtest_n1xp = data.X_nxp[test_idx]
+
+
+    # Get noisy measurement and model prediction for designed sequence
+    ytest_n1 = data.get_measurements(test_idx)
+    pred_n1 = Xtest_n1xp.dot(beta_p)
+    
+    return Xtrain_nxp, ytrain_n, Xtest_n1xp, ytest_n1, pred_n1
+
+def sample_new_designed_data_fluorescent_normal(data, Xtrain_nxp, ytrain_n, gamma, seed, n1=1, noise_std=0.1, method=1):
+    """
+    Sample a new designed protein using normal distribution based on predictions, incorporating uncertainty and noise.
+    """
+
+    rng = np.random.default_rng(seed)
+    
+    # Train ridge regression model
+    A_pxn = get_invcov_dot_xt(Xtrain_nxp, gamma, use_lapack=True)
+    beta_p = A_pxn.dot(ytrain_n)
+
+    # Construct the predictions based on the training data
+    predall_n = data.X_nxp.dot(beta_p)
+
+    # Use predictions with added uncertainty to create a normal distribution for sampling
+    mean_pred = predall_n.mean()
+    std_pred = predall_n.std()
+
+    if method == 1:
+        ###################### Method 1 - Probability-Based Sampling According to Normal Distribution ######################
+        # Calculate probabilities for each predicted value based on normal distribution
+        probabilities = np.exp(-(predall_n - mean_pred)**2 / (2 * std_pred**2))
+        # Normalize probabilities to sum to 1
+        probabilities /= np.sum(probabilities)
+        # Sample test index based on these probabilities
+        test_idx = rng.choice(data.n, n1, p=probabilities)
+        # Retrieve the corresponding test point
+        Xtest_n1xp = data.X_nxp[test_idx]
+
+    elif method == 2:
+        ###################### Method 2 - Sampling One Point from Normal Distribution and Selecting Closest Prediction ######################
+        # Sample one point from the normal distribution with mean and variance from all predictions
+        sampled_point = rng.normal(loc=mean_pred, scale=std_pred, size=1)
+        # Find the closest prediction to this sampled point
+        test_idx = np.argmin(np.abs(predall_n - sampled_point))
+        # Retrieve the corresponding test point
+        test_idx = [test_idx]
+        Xtest_n1xp = data.X_nxp[test_idx]
+        
+
+    else:
+        ###################### Method 3 - Sampling Index From Normal Distribution ######################
+        # Sample new test input (index of designed sequence) from a normal distribution and add noise
+        normal_samples = rng.normal(loc=mean_pred, scale=std_pred, size=len(predall_n))
+        test_idx = np.argsort(np.abs(normal_samples - mean_pred))[-n1:]  # Select the farest points
+        Xtest_n1xp = data.X_nxp[test_idx]
+
+
+    # Get noisy measurement and model prediction for designed sequence
+    ytest_n1 = data.get_measurements(test_idx)
+    pred_n1 = Xtest_n1xp.dot(beta_p)
+    
+    return Xtest_n1xp, ytest_n1, pred_n1

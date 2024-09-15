@@ -1,0 +1,1 @@
+python3 ../run_our_experiment.py --n_train_initial 32 --lmbdas 8 --n_seed 1000 --n_steps 5 --reg 0.01 --depth_max 2 --data_distribution Fluorescent --new_sampling_distribution Normal --sampling_method 1 --fluorescent_colour 'Blue'
